@@ -1,0 +1,79 @@
+services:
+  mare-website:
+    image: mare-website
+
+    build: .
+
+    env_file: .env
+    environment:
+      LOKI_URL: http://loki:3100
+      DATABASE_URL: postgres://mare:${PG_PASSWORD}@postgres:5432/mare_data
+
+    ports: [4000:3000]
+
+    networks: [postgres, loki]
+    depends_on: [postgres, loki]
+
+  postgres:
+    image: postgres:15
+
+    volumes:
+      [myvol:/var/lib/postgresql/data]
+
+    environment:
+      POSTGRES_DB: mare_data
+      POSTGRES_USER: mare
+      POSTGRES_PASSWORD: mare
+
+    ports: [5432:5432]
+    networks: [postgres]
+
+  # pgadmin:
+  #   image: dpage/pgadmin4:7
+  #   ports: [3000:80]
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: mares@snowpity.com
+  #     PGADMIN_DEFAULT_PASSWORD: maresilovethem
+  #   networks: [postgres]
+
+  # backend for logs
+  loki:
+    image: grafana/loki:2.9.3
+    command: -config.file=/etc/loki/config.yml
+    volumes: [
+      loki:/loki,
+      ./docker/loki/config.yml:/etc/loki/config.yml:ro
+    ]
+
+    ports:
+      [3100:3100]
+
+    networks:
+      [loki]
+
+  # frontend
+  grafana:
+    image: grafana/grafana:10.2.2
+
+    ports: [3000:3000]
+
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+
+    volumes: [
+      grafana:/var/lib/grafana,
+      ./docker/grafana/config.yml:/etc/grafana/provisioning/datasources/config.yml:ro
+    ]
+
+    networks: [loki]
+    depends_on: [loki]
+
+networks:
+  postgres:
+  loki:
+
+volumes:
+  myvol:
+  loki:
+  grafana:

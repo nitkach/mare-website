@@ -1,0 +1,26 @@
+[package]
+edition = "2021"
+name    = "mare-website"
+version = "0.1.0"
+
+[dependencies]
+anyhow             = { version = "1.0", features = ["backtrace"] }
+askama             = { version = "0.12.1", features = ["with-axum"] }
+askama_axum        = "0.3.0"
+axum               = { version = "0.6", features = ["headers", "macros", "form"] }
+chrono             = { version = "0.4.31", features = ["serde"] }
+dotenvy            = "0.15"
+env_logger         = "0.10.0"
+futures            = "0.3"
+hyper              = "1.0.1"
+itertools          = "0.12"
+log                = "0.4.20"
+reqwest            = { version = "0.11.22", features = ["json", "rustls-tls"], default-features = false }
+serde              = { version = "1.0", features = ["derive"] }
+serde_json         = "1.0.108"
+sqlx               = { version = "0.7", features = ["postgres", "runtime-tokio", "chrono"] }
+tokio              = { version = "1.0", features = ["rt-multi-thread", "macros", "fs"] }
+tracing            = { version = "0.1", features = ["attributes"] }
+tracing-loki       = { version = "0.2", features = ["rustls", "compat-0-2-1"], default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url                = { version = "2.5" }
