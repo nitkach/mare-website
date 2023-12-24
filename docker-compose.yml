@@ -9,7 +9,7 @@ services:
       LOKI_URL: http://loki:3100
       DATABASE_URL: postgres://mare:${PG_PASSWORD}@postgres:5432/mare_data
 
-    ports: [4000:3000]
+    ports: [3000:3000]
 
     networks: [postgres, loki]
     depends_on: [postgres, loki]
@@ -55,7 +55,7 @@ services:
   grafana:
     image: grafana/grafana:10.2.2
 
-    ports: [3000:3000]
+    ports: [4000:3000]
 
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: true

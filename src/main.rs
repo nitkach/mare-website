@@ -9,11 +9,6 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> ExitCode {
-
-
-
-
-
     let log_control = mare_website::logging::LogControl::init_logging();
 
     let website = AssertUnwindSafe(async {

@@ -6,6 +6,7 @@ use axum::routing::{get, post};
 use axum::{Form, Router};
 use chrono::{Utc, DateTime};
 use serde::Deserialize;
+use tracing::info;
 
 use crate::database::breed::Breed;
 use crate::database::{Database, DatabaseRecord, SetState};
@@ -17,7 +18,7 @@ pub async fn run() -> Result<()> {
     let shared_state = Database::init().await?;
 
     // build our application with a single route
-    let app = Router::new()
+    let routes = Router::new()
         .route("/", get(get_index))
         .route("/mares", get(get_mare_table))
         .route("/mares", post(post_mares))
@@ -27,9 +28,19 @@ pub async fn run() -> Result<()> {
         .route("/mares/:id/image", get(mare_image))
         .with_state(shared_state);
 
-    axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
-        .serve(app.into_make_service())
-        .await?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    let (ip, port) = {
+        let x = listener.local_addr().unwrap();
+        (x.ip(), x.port())
+    };
+
+    info!(ip = ?ip, port = ?port, "Bound IP address and port.");
+
+    axum::serve(listener, routes.into_make_service()).await?;
+
+    // axum::Server::bind(&"0.0.0.0:3000".parse().unwrap())
+    //     .serve(app.into_make_service())
+    //     .await?;
 
     Ok(())
 }

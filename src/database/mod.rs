@@ -1,9 +1,11 @@
+use std::fmt::Display;
+
 use anyhow::Result;
 use chrono::Utc;
 use log::LevelFilter;
 use serde::Deserialize;
 use sqlx::{postgres::PgConnectOptions, ConnectOptions, PgPool};
-use tracing::{instrument, warn, Level, info};
+use tracing::{info, instrument, warn, Level};
 use url::{self, Url};
 
 use crate::app::{AddPonyForm, EditPonyForm};
@@ -21,6 +23,12 @@ pub(crate) enum SetState {
     Success = 0,
     ModifiedAtConflict = 1,
     RecordNotFound = 2,
+}
+
+impl Display for SetState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
 }
 
 impl From<i32> for SetState {
@@ -50,28 +58,20 @@ pub(crate) struct Database {
 impl Database {
     #[instrument(level = Level::INFO)]
     pub(crate) async fn init() -> Result<Self> {
-        // let database_url = "postgres://mare:mare@localhost/postgres";
-
         let database_url = Url::parse(&std::env::var("DATABASE_URL")?)?;
 
         let options = PgConnectOptions::from_url(&database_url)?
-            // PgConnectOptions::new()
-            // .host("postgres")
-            // .port(5432)
-            // .database("mare_data")
-            // .username("mare")
-            // .password("mare")
             .log_statements(LevelFilter::Debug)
             .log_slow_statements(LevelFilter::Warn, core::time::Duration::from_secs(1));
 
         let pool = PgPool::connect_with(options).await?;
 
-        sqlx::migrate!().run(&pool).await?;
+        info!(
+            database_url = database_url.to_string(),
+            "Established connection to database"
+        );
 
-        // info!(
-        //     "Connection pool with SQLx database has been created from: `{}`",
-        //     &database_url
-        // );
+        sqlx::migrate!().run(&pool).await?;
 
         Ok(Self { pool })
     }
@@ -93,9 +93,15 @@ impl Database {
         let record = query.fetch_one(&self.pool).await?;
 
         // TODO rows_affected=1 rows_returned=0 elapsed=3.8952ms
+        // structured logging
         info!(
-            "Added new record: {} | {} | {} | {}",
-            record.id, record.breed, record.modified_at, record.name
+            name = record.name,
+            breed = record.breed.to_string(),
+            created_at = record.modified_at.to_string(),
+            id = record.id,
+            "Added new record: \"{}\", with id = {}",
+            record.name,
+            record.id
         );
 
         Ok(record.id)
@@ -116,9 +122,14 @@ impl Database {
         let record = query.fetch_optional(&self.pool).await?;
 
         if let Some(record) = &record {
+            // TODO
             info!(
-                "Record with id = {id} found, returning {} | {} | {}",
-                record.name, record.breed, record.modified_at
+                name = record.name,
+                breed = record.breed.to_string(),
+                created_at = record.modified_at.to_string(),
+                id = record.id,
+                "Received record: \"{}\", with id = {id}",
+                record.name
             );
         } else {
             warn!("Record with id = {id} not found in database.");
@@ -173,7 +184,10 @@ impl Database {
 
         let records = query.fetch_all(&self.pool).await?;
 
-        info!("Getting list of records, total {} records.", records.len());
+        info!(
+            "GET: list of records. Total records found: {}.",
+            records.len()
+        );
 
         Ok(records)
     }
@@ -193,10 +207,7 @@ impl Database {
         let record = query.fetch_optional(&self.pool).await?;
 
         if let Some(record) = &record {
-            info!(
-                "Record removed from database: {id} | {} | {} | {}",
-                record.name, record.breed, record.modified_at
-            );
+            info!("REMOVE: record with id = {id} removed from database.");
         } else {
             warn!("Record with id = {id} not found in database.",);
         }
