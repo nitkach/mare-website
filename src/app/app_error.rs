@@ -1,5 +1,8 @@
 use askama::Template;
-use axum::{response::{IntoResponse, Response}, http::StatusCode};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
 
 #[derive(Debug, Template)]
 #[template(path = "error.askama.html")]
@@ -15,7 +18,7 @@ pub(crate) struct AppError {
 
 impl AppError {
     pub(crate) fn new(code: StatusCode, source: anyhow::Error) -> Self {
-        Self { source, code }
+        Self { code, source }
     }
 
     pub(crate) fn with_status_404(source: anyhow::Error) -> Self {

@@ -1,14 +1,14 @@
-use std::fmt::Display;
-
 use anyhow::Result;
 use chrono::Utc;
 use log::LevelFilter;
 use serde::Deserialize;
 use sqlx::{postgres::PgConnectOptions, ConnectOptions, PgPool};
 use tracing::{info, instrument, warn, Level};
+use ulid::Ulid;
 use url::{self, Url};
 
 use crate::app::{AddPonyForm, EditPonyForm};
+use crate::utils::ulid::{DbUlid, DbUlidGen};
 
 pub(crate) mod breed;
 
@@ -25,12 +25,6 @@ pub(crate) enum SetState {
     RecordNotFound = 2,
 }
 
-impl Display for SetState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
 impl From<i32> for SetState {
     fn from(value: i32) -> Self {
         match value {
@@ -42,17 +36,27 @@ impl From<i32> for SetState {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct DatabaseRecord {
-    pub(crate) id: i64,
+    pub(crate) id: DbUlid,
     pub(crate) name: String,
     pub(crate) breed: breed::Breed,
     pub(crate) modified_at: chrono::DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct Database {
     pool: PgPool,
+    ulid_gen: DbUlidGen,
+}
+
+impl std::fmt::Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database")
+            .field("pool", &self.pool)
+            // TODO
+            .finish_non_exhaustive()
+    }
 }
 
 impl Database {
@@ -73,11 +77,14 @@ impl Database {
 
         sqlx::migrate!().run(&pool).await?;
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            ulid_gen: DbUlidGen::default(),
+        })
     }
 
     #[instrument(level = Level::INFO, skip(self))]
-    pub(crate) async fn add(&self, data: &AddPonyForm) -> Result<i64> {
+    pub(crate) async fn add(&self, data: &AddPonyForm) -> Result<Ulid> {
         let breed: i32 = data.breed.into();
 
         let query = sqlx::query_as!(
@@ -98,17 +105,17 @@ impl Database {
             name = record.name,
             breed = record.breed.to_string(),
             created_at = record.modified_at.to_string(),
-            id = record.id,
+            id = record.id.0.to_string(),
             "Added new record: \"{}\", with id = {}",
             record.name,
-            record.id
+            record.id.0.to_string()
         );
 
-        Ok(record.id)
+        Ok(record.id.0)
     }
 
     #[instrument(level = Level::INFO, skip(self))]
-    pub(crate) async fn get(&self, id: i32) -> Result<Option<DatabaseRecord>> {
+    pub(crate) async fn get(&self, id: &str) -> Result<Option<DatabaseRecord>> {
         let query = sqlx::query_as!(
             DatabaseRecord,
             r#"
@@ -127,7 +134,7 @@ impl Database {
                 name = record.name,
                 breed = record.breed.to_string(),
                 created_at = record.modified_at.to_string(),
-                id = record.id,
+                id = record.id.0.to_string(),
                 "Received record: \"{}\", with id = {id}",
                 record.name
             );
@@ -139,7 +146,7 @@ impl Database {
     }
 
     #[instrument(level = Level::INFO, skip(self))]
-    pub(crate) async fn set(&self, id: i32, data: &EditPonyForm) -> Result<SetState> {
+    pub(crate) async fn set(&self, id: &str, data: &EditPonyForm) -> Result<SetState> {
         // TODO return previous record data
         // SQLite doesn't support this feature :/
         // https://stackoverflow.com/questions/6725964/sqlite-get-the-old-value-after-update
@@ -177,23 +184,37 @@ impl Database {
         let query = sqlx::query_as!(
             DatabaseRecord,
             r#"
-            select *
-            from mares
+            select * from mares
             "#
         );
 
         let records = query.fetch_all(&self.pool).await?;
 
-        info!(
-            "GET: list of records. Total records found: {}.",
-            records.len()
-        );
+        info!("List of records. Total records found: {}.", records.len());
 
         Ok(records)
     }
 
     #[instrument(level = Level::INFO, skip(self))]
-    pub(crate) async fn remove(&self, id: i32) -> Result<Option<DatabaseRecord>> {
+    pub(crate) async fn get_paged_records(&self, offset: &str) -> Result<Vec<DatabaseRecord>> {
+        let query = sqlx::query_as!(
+            DatabaseRecord,
+            r#"
+            select * from mares
+            where id > $1
+            order by id
+            asc limit 5
+            "#,
+            offset
+        );
+
+        let records = query.fetch_all(&self.pool).await?;
+
+        Ok(records)
+    }
+
+    #[instrument(level = Level::INFO, skip(self))]
+    pub(crate) async fn remove(&self, id: &str) -> Result<Option<DatabaseRecord>> {
         let query = sqlx::query_as!(
             DatabaseRecord,
             r#"
@@ -206,12 +227,64 @@ impl Database {
 
         let record = query.fetch_optional(&self.pool).await?;
 
-        if let Some(record) = &record {
-            info!("REMOVE: record with id = {id} removed from database.");
+        if record.is_some() {
+            info!("Record with id = {id} removed from database.");
         } else {
             warn!("Record with id = {id} not found in database.",);
         }
 
         Ok(record)
     }
+
+    pub(crate) async fn add_user(&self, name: &str) -> Result<Ulid> {
+        // Ulid::new()
+        let id = self.ulid_gen.generate().to_string();
+
+        let query = sqlx::query_as!(
+            TestUlidRecord,
+            r#"insert into users (id, name)
+            values ($1, $2)
+            returning id as "id!", name as "name!";
+            "#,
+            id,
+            name
+        );
+
+        let record = query.fetch_one(&self.pool).await?;
+
+        Ok(record.id.0)
+    }
+
+    pub(crate) async fn update_to_ulid(&self) -> Result<()> {
+        let query = sqlx::query_as!(
+            DatabaseRecord,
+            r#"
+            select * from mares;
+            "#
+        );
+
+        let records = query.fetch_all(&self.pool).await?;
+
+        for record in records {
+            let ulid = self.ulid_gen.generate().to_string();
+
+            let query = sqlx::query!(
+                r#"
+                update mares
+                set id = $1
+                where id = $2;
+                "#,
+                ulid,
+                record.id.0.to_string()
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TestUlidRecord {
+    pub(crate) id: DbUlid,
+    pub(crate) name: String,
 }

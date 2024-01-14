@@ -1,6 +1,7 @@
 mod app;
 mod database;
 pub mod logging;
+mod utils;
 
 pub async fn run() -> anyhow::Result<()> {
     // TODO .env file?

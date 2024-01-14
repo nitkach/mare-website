@@ -1,7 +1,7 @@
 use tracing::info;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 pub struct LogControl {
@@ -11,21 +11,26 @@ pub struct LogControl {
 
 impl LogControl {
     pub fn init_logging() -> Self {
-        let sqlx_filter = EnvFilter::new("\
+        let sqlx_filter = EnvFilter::new(
+            "\
             info,\
             sqlx::query=warn,\
             hyper=warn\
-        ");
+        ",
+        );
 
         // let sqlx_layer = tracing_subscriber::fmt::layer().with_filter(sqlx_filter);
 
         // getting
         let (layer, controller, task) = tracing_loki::builder()
             // used to set a label on the logs
-            .label("source", "mare-website").unwrap()
+            .label("source", "mare-website")
+            .unwrap()
             // additional key-value pairs that provide more context or information about the log event
-            .extra_field("pid", format!("{}", std::process::id())).unwrap()
-            .build_controller_url(Url::parse("http://loki:3100").unwrap()).unwrap();
+            .extra_field("pid", format!("{}", std::process::id()))
+            .unwrap()
+            .build_controller_url(Url::parse("http://loki:3100").unwrap())
+            .unwrap();
 
         // register our layer with `tracing`.
         tracing_subscriber::registry()
@@ -40,9 +45,7 @@ impl LogControl {
         // delivered.
         let task = tokio::spawn(task);
 
-        info!(
-            "Logging successfully set up",
-        );
+        info!("Logging successfully set up",);
 
         Self { task, controller }
     }
@@ -52,9 +55,6 @@ impl LogControl {
 
         self.controller.shutdown().await;
 
-        eprintln!(
-            "Stopped logging task: {:?}",
-            self.task.await
-        );
+        eprintln!("Stopped logging task: {:?}", self.task.await);
     }
 }

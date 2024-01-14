@@ -1,11 +1,6 @@
-use anyhow::Result;
 use futures::{FutureExt, TryFutureExt};
-use std::{
-    panic::{self, AssertUnwindSafe},
-    process::ExitCode,
-};
+use std::{panic::AssertUnwindSafe, process::ExitCode};
 use tracing::error;
-use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> ExitCode {

@@ -30,7 +30,7 @@
 </nav>
 
 <div class="container">
-    <div class="shadow mb-5 bg-body-tertiary rounded">
+    <div class="shadow bg-body-tertiary rounded">
         <table class="table align-middle">
             <thead class="table-dark">
                 <th scope="col">Image</th>
@@ -94,7 +94,14 @@
             </tbody>
         </table>
         <div class="text-center pb-3">
-            <a href="/mares/page/0" class="btn btn-success" role="button">Paged table</a>
+            <ul class="pagination justify-content-center pb-3">
+                <li class="page-item">
+                    <a class="page-link">Previous</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="/mares/page/{{ last_id }}">Next</a>
+                </li>
+            </ul>
         </div>
     </div>
 </div>
