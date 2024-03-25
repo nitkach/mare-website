@@ -4,11 +4,10 @@ use std::{
 };
 
 use anyhow::anyhow;
-use sqlx::{Encode, Postgres};
 use ulid::Ulid;
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
-pub(crate) struct DbUlid(pub(crate) Ulid);
+pub(crate) struct DbUlid(Ulid);
 
 impl Display for DbUlid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -16,14 +15,14 @@ impl Display for DbUlid {
     }
 }
 
+impl DbUlid {
+    pub(crate) fn get(&self) -> Ulid {
+        self.0
+    }
+}
+
 impl From<String> for DbUlid {
     fn from(value: String) -> Self {
-        // match ulid::Ulid::from_string(&value) {
-        //     Ok(ulid) => DbUlid(ulid),
-        //     Err(err) => {
-        //         panic!("Failed to decode ULID from database: {:?}", anyhow!(err))
-        //     }
-        // }
         ulid::Ulid::from_string(&value)
             .map(DbUlid)
             .unwrap_or_else(|err| panic!("Failed to decode ULID from database: {:?}", anyhow!(err)))

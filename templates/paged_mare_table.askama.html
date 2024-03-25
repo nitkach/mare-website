@@ -44,7 +44,7 @@
                         <td></td>
                         <td>
                             <div class="form-floating">
-                                <input type="text" id="name" name="name" class="form-control"
+                                <input type="text" id="name" name="name" class="form-control" required maxlength="100"
                                     placeholder="Write pony name here" />
                                 <label for="name" class="form-label">Pony name</label>
                             </div>
@@ -93,15 +93,63 @@
                 {% endfor %}
             </tbody>
         </table>
+
         <div class="text-center pb-3">
             <ul class="pagination justify-content-center pb-3">
-                <li class="page-item">
+                {% if ponies.len() == 0 %}
+                <li class="page-item disabled">
                     <a class="page-link">Previous</a>
                 </li>
-                <li class="page-item">
-                    <a class="page-link" href="/mares/page/{{ last_id }}">Next</a>
+                <li class="page-item disabled">
+                    <a class="page-link">Next</a>
                 </li>
-            </ul>
+                {% else if ponies.len() < 5 %} {% if page !=1 %} <li class="page-item">
+                    {% match first_id %}
+                    {% when Some with (first_id_val) %}
+                    <a class="page-link" href="/mares/page/{{ page - 1 }}/prev/{{ first_id_val }}">Previous</a>
+                    {% when None %}
+                    <a class="page-link disabled">Previous</a>
+                    {% endmatch %}
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <a class="page-link">Previous</a>
+                    </li>
+                    {% endif %}
+
+                    <li class="page-item disabled">
+                        <a class="page-link">Next</a>
+                    </li>
+                    {% else %}
+
+                    {% if page != 1 %}
+                    <li class="page-item">
+                        {% match first_id %}
+                        {% when Some with (first_id_val) %}
+                        <a class="page-link" href="/mares/page/{{ page - 1 }}/prev/{{ first_id_val }}">Previous</a>
+                        {% when None %}
+                        <a class="page-link disabled">Previous</a>
+                        {% endmatch %}
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled">
+                        <a class="page-link">Previous</a>
+                    </li>
+                    {% endif %}
+
+
+                    {% match last_id %}
+                    {% when Some with (last_id_val) %}
+                    <li class="page-item">
+                        <a class="page-link" href="/mares/page/{{ page + 1}}/next/{{ last_id_val }}">Next</a>
+                    </li>
+                    {% when None %}
+                    <li class="page-item">
+                        <a class="page-link">Next</a>
+                    </li>
+                    {% endmatch %}
+
+                    {% endif %}
         </div>
     </div>
 </div>

@@ -3,14 +3,14 @@ use askama_axum::Template;
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
-use axum::{Form, Router};
+use axum::{debug_handler, Form, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tower_http::trace::{self, TraceLayer};
 use tracing::{error, info, warn, Level};
 
 use crate::database::breed::Breed;
-use crate::database::{Database, DatabaseRecord, SetState};
+use crate::database::{Database, DatabaseRecord, PagingState, SetState};
 use app_error::AppError;
 
 mod app_error;
@@ -27,7 +27,7 @@ pub async fn run() -> Result<()> {
         .route("/", get(get_index))
         .route("/mares", get(get_mare_table))
         .route("/mares", post(post_mares))
-        .route("/mares/page/:id", get(get_paged_mare_table))
+        .route("/mares/page/:page/:state/:id", get(get_paged_mare_table))
         .route("/mares/:id", get(get_mare))
         .route("/mares/:id/delete", post(delete_mare))
         .route("/mares/:id/edit", post(edit_mare))
@@ -74,28 +74,41 @@ async fn get_mare_table(State(pool): State<Database>) -> Result<impl IntoRespons
     Ok(html)
 }
 
+#[derive(Deserialize)]
+struct PagingParameters {
+    page: u32,
+    id: String,
+    state: PagingState,
+}
+
 #[derive(Debug, Template)]
 #[template(path = "paged_mare_table.askama.html")]
 struct PagedMareTableTemplate {
     ponies: Vec<DatabaseRecord>,
-    last_id: String,
+    first_id: Option<String>,
+    last_id: Option<String>,
+    page: u32,
 }
 
+#[debug_handler]
 async fn get_paged_mare_table(
     State(pool): State<Database>,
-    Path(id): Path<String>,
+    Path(params): Path<PagingParameters>,
 ) -> Result<impl IntoResponse, AppError> {
-    let mare_records = pool.get_paged_records(&id).await?;
+    let mare_records = pool.get_paged_records(&params.id, params.state).await?;
 
-    let last_id = if let Some(record) = mare_records.last() {
-        record.id.to_string()
-    } else {
-        unimplemented!()
+    let (first_id, last_id) = match (mare_records.first(), mare_records.last()) {
+        (None, None) => (None, None),
+        (Some(first), Some(last)) => (Some(first.id.to_string()), Some(last.id.to_string())),
+
+        _ => unreachable!(),
     };
 
     let html = PagedMareTableTemplate {
         ponies: mare_records,
+        first_id,
         last_id,
+        page: params.page,
     };
 
     Ok(html)
@@ -113,11 +126,17 @@ async fn post_mares(
 ) -> Result<impl IntoResponse, AppError> {
     let form = form.0;
 
+    if form.name.len() > 100 {
+        return Err(AppError::new(
+            axum::http::StatusCode::BAD_REQUEST,
+            anyhow!(
+                "Allowed name length has been exceeded.\nCurrent length: {}, maximum: 100.",
+                form.name.len()
+            ),
+        ));
+    }
+
     let _ = pool.add(&form).await?;
-
-    let x = pool.add_user(&form.name).await?;
-
-    info!(ulid = x.to_string(), "added new user: {}", form.name);
 
     Ok(axum::response::Redirect::to("/mares"))
 }
@@ -178,17 +197,14 @@ async fn edit_mare(
 ) -> Result<impl IntoResponse, AppError> {
     let pony_data = form.0;
 
-    // DateTime::<Utc>::to_rfc3339(&self)
-    // // problem: if first user edit data, but not send it, this is problem
-    // // fix: add timestamp_updated_at as field -> send to request to update
-    // // if timestamp != timestamp of record -> problem
-    // // optimistic concurrency
+    // problem: if first user edit data, but not send it, this is problem
+    // fix: add timestamp_updated_at as field -> send to request to update
+    // if timestamp != timestamp of record -> problem
+    // optimistic concurrency
 
-    // chrono::DateTime::
-    // // sqlx feature to support Timestamp
+    // sqlx feature to support Timestamp
 
-    // // html: timestamp (when sended) - hidden form input
-    // let Some(_) = pool.set(id, &pony_data).await? else
+    // html: timestamp (when sended) - hidden form input
     let reason = match pool.set(&id, &pony_data).await? {
         SetState::Success => return Ok(axum::response::Redirect::to("/mares")),
         SetState::ModifiedAtConflict => "has already changed.",

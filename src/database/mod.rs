@@ -59,6 +59,13 @@ impl std::fmt::Debug for Database {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum PagingState {
+    Next,
+    Prev,
+}
+
 impl Database {
     #[instrument(level = Level::INFO)]
     pub(crate) async fn init() -> Result<Self> {
@@ -86,13 +93,15 @@ impl Database {
     #[instrument(level = Level::INFO, skip(self))]
     pub(crate) async fn add(&self, data: &AddPonyForm) -> Result<Ulid> {
         let breed: i32 = data.breed.into();
+        let id = self.ulid_gen.generate().to_string();
 
         let query = sqlx::query_as!(
             DatabaseRecord,
-            r#"insert into mares (name, breed, modified_at)
-            values ($1, $2, CURRENT_TIMESTAMP)
+            r#"insert into mares (id, name, breed, modified_at)
+            values ($1, $2, $3, CURRENT_TIMESTAMP)
             returning id as "id!", name as "name!", breed as "breed!", modified_at as "modified_at!";
             "#,
+            id,
             data.name,
             breed
         );
@@ -153,15 +162,6 @@ impl Database {
 
         let breed: i32 = data.breed.into();
 
-        //     info!(
-        //         "Record with id = {id} modified to {} | {} | {}",
-        //         record.name, record.breed, record.modified_at
-        //     );
-        // warn!(
-        //         "Record with id = {id} and timestamp = {} not found in database.",
-        //         data.modified_at
-        //     );
-
         let query = sqlx::query_as!(
             SetStatus,
             r#"
@@ -184,7 +184,7 @@ impl Database {
         let query = sqlx::query_as!(
             DatabaseRecord,
             r#"
-            select * from mares
+            select * from mares;
             "#
         );
 
@@ -196,19 +196,43 @@ impl Database {
     }
 
     #[instrument(level = Level::INFO, skip(self))]
-    pub(crate) async fn get_paged_records(&self, offset: &str) -> Result<Vec<DatabaseRecord>> {
-        let query = sqlx::query_as!(
-            DatabaseRecord,
-            r#"
-            select * from mares
-            where id > $1
-            order by id
-            asc limit 5
-            "#,
-            offset
-        );
-
-        let records = query.fetch_all(&self.pool).await?;
+    pub(crate) async fn get_paged_records(
+        &self,
+        cursor: &str,
+        state: PagingState,
+    ) -> Result<Vec<DatabaseRecord>> {
+        let records = match state {
+            PagingState::Next => {
+                sqlx::query_as!(
+                    DatabaseRecord,
+                    r#"
+                select * from mares
+                where id > $1
+                order by id
+                asc limit 5
+                "#,
+                    cursor
+                )
+                .fetch_all(&self.pool)
+                .await?
+            }
+            PagingState::Prev => {
+                let mut records = sqlx::query_as!(
+                    DatabaseRecord,
+                    r#"
+                select * from mares
+                where id < $1
+                order by id
+                desc limit 5
+                "#,
+                    cursor
+                )
+                .fetch_all(&self.pool)
+                .await?;
+                records.reverse();
+                records
+            }
+        };
 
         Ok(records)
     }
@@ -235,56 +259,4 @@ impl Database {
 
         Ok(record)
     }
-
-    pub(crate) async fn add_user(&self, name: &str) -> Result<Ulid> {
-        // Ulid::new()
-        let id = self.ulid_gen.generate().to_string();
-
-        let query = sqlx::query_as!(
-            TestUlidRecord,
-            r#"insert into users (id, name)
-            values ($1, $2)
-            returning id as "id!", name as "name!";
-            "#,
-            id,
-            name
-        );
-
-        let record = query.fetch_one(&self.pool).await?;
-
-        Ok(record.id.0)
-    }
-
-    pub(crate) async fn update_to_ulid(&self) -> Result<()> {
-        let query = sqlx::query_as!(
-            DatabaseRecord,
-            r#"
-            select * from mares;
-            "#
-        );
-
-        let records = query.fetch_all(&self.pool).await?;
-
-        for record in records {
-            let ulid = self.ulid_gen.generate().to_string();
-
-            let query = sqlx::query!(
-                r#"
-                update mares
-                set id = $1
-                where id = $2;
-                "#,
-                ulid,
-                record.id.0.to_string()
-            );
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct TestUlidRecord {
-    pub(crate) id: DbUlid,
-    pub(crate) name: String,
 }
